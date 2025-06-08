@@ -300,7 +300,7 @@ class mLSHADE_SPACMA:
                     self.B = B
                     self.invsqrtC = np.dot(self.B, np.dot(np.diag(self.D ** -1), self.B.T))
 
-            print(f"Iteration {gen + 1}, Pop Size: {self.N_current}, Best: {np.min(self.fitness)}, FCP: {self.FCP_memory}")
+            print(f"Iteration {gen + 1}, Pop Size: {self.N_current}, Best: {np.min(self.fitness)}")
 
         best_idx = np.argmin(self.fitness)
         return self.pop[best_idx], self.fitness[best_idx], self.iteration_log
