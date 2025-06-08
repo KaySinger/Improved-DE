@@ -150,7 +150,7 @@ class mLSHADE_RL:
             return  # 不触发 restart
 
         for i in range(self.N_current):
-            if self.count[i] > 2 * 50:
+            if self.count[i] > 2 * self.dim:
                 if np.random.rand() < 0.5:
                     # 水平交叉 (公式26)
                     j = np.random.randint(self.N_current)
@@ -181,12 +181,9 @@ class mLSHADE_RL:
             S_F, S_CR, S_weights = [], [], []
             S_freq, S_freq_weights = [], []
             new_pop, new_fitness = [], []
-            strategy1_improvement = []  # 策略1的改进值
-            strategy2_improvement = []  # 策略2的改进值
-            strategy3_improvement = []  # 策略3的改进值
-            strategy1_old_fitness = []  # 各策略的原始适应度值
-            strategy2_old_fitness = []  # 各策略的原始适应度值
-            strategy3_old_fitness = []  # 各策略的原始适应度值
+            strategy1 = []  # 策略1的改进值
+            strategy2 = []  # 策略2的改进值
+            strategy3 = []  # 策略3的改进值
             I_MSi = np.zeros(3)
 
             best_val = np.min(self.fitness)
@@ -210,7 +207,6 @@ class mLSHADE_RL:
                         F = 0.5 * (np.sin(2 * np.pi * 0.5 * gen + np.pi) * ((self.max_gen - gen) / self.max_gen) + 1)
                         self.freq_judge = 1
                     else:
-                        freq = cauchy.rvs(self.freq_memory[r], 0.1)
                         F = 0.5 * np.sin(2 * np.pi * freq * gen) * (gen / self.max_gen) + 0.5
                         self.freq_judge = 2
                 else:
@@ -235,7 +231,7 @@ class mLSHADE_RL:
                 if trial_fitness < self.fitness[i]:
                     new_pop.append(trial)
                     new_fitness.append(trial_fitness)
-                    delta = np.abs(self.fitness[i] - trial_fitness)
+                    delta = self.fitness[i] - trial_fitness
                     S_F.append(F)
                     S_CR.append(CR)
                     S_weights.append(delta)
@@ -264,14 +260,11 @@ class mLSHADE_RL:
                             self.nf2 += 1
 
                 if strategy == 1:
-                    strategy1_improvement.append(np.maximum(0, trial_fitness - self.fitness))
-                    strategy1_old_fitness.append(self.fitness[i])
+                    strategy1.append(np.maximum(0, (trial_fitness - self.fitness[i]) / self.fitness[i]))
                 elif strategy == 2:
-                    strategy2_improvement.append(np.maximum(0, trial_fitness - self.fitness))
-                    strategy2_old_fitness.append(self.fitness[i])
+                    strategy2.append(np.maximum(0, (trial_fitness - self.fitness[i]) / self.fitness[i]))
                 else:
-                    strategy3_improvement.append(np.maximum(0, trial_fitness - self.fitness))
-                    strategy3_old_fitness.append(self.fitness[i])
+                    strategy3.append(np.maximum(0, (trial_fitness - self.fitness[i]) / self.fitness[i]))
 
             # 更新种群
             new_N = self._linear_pop_size_reduction(gen)
@@ -291,16 +284,11 @@ class mLSHADE_RL:
 
             for k in range(3):
                 if k == 0:
-                    num = np.sum(strategy1_improvement)
-                    den = np.sum(strategy1_old_fitness)
+                    I_MSi[k] = max(0.0, float(np.mean(strategy1)))
                 elif k == 1:
-                    num = np.sum(strategy2_improvement)
-                    den = np.sum(strategy2_old_fitness)
+                    I_MSi[k] = max(0.0, float(np.mean(strategy2)))
                 else:
-                    num = np.sum(strategy3_improvement)
-                    den = np.sum(strategy3_old_fitness)
-
-                I_MSi[k] = num / (den + 1e-20) if den > 0 else 0
+                    I_MSi[k] = max(0.0, float(np.mean(strategy3)))
 
             sum_IMSi = np.sum(I_MSi)
             if sum_IMSi > 0:
@@ -309,27 +297,28 @@ class mLSHADE_RL:
             else:
                 self.P_MS[:] = 1 / 3
 
-            self.P_MS /= np.sum(self.P_MS)  # 归一化
-
             # 更新历史记忆（加权Lehmer均值）
             if np.any(S_F):
-                F_lehmer = np.sum(np.array(S_F) ** 2 * S_weights) / np.sum(np.array(S_F) * S_weights)
+                F_lehmer = np.sum(np.array(S_F)**2 * S_weights) / np.sum(np.array(S_F) * S_weights)
                 self.F_memory[self.hist_idx] = F_lehmer
 
             # CR 部分
             if np.any(S_CR):
-                CR_lehmer = np.sum(np.array(S_CR) ** 2 * S_weights) / np.sum(np.array(S_CR) * S_weights)
-                self.CR_memory[self.hist_idx] = CR_lehmer
+                if gen < self.max_gen // 2:
+                    CR_lehmer = np.sum(np.array(S_CR)**2 * S_weights) / np.sum(np.array(S_CR) * S_weights)
+                    self.CR_memory[self.hist_idx] = CR_lehmer
+                else:
+                    self.CR_memory[self.hist_idx] = self.CR_memory[self.hist_idx]
 
             if gen < self.max_gen // 2:
                 if np.any(S_freq):
-                    freq_lehmer = np.sum(np.array(S_freq) * S_freq_weights[:len(S_freq)]) / np.sum(np.array(S_freq) * S_freq_weights)
+                    freq_lehmer = np.sum(np.array(S_freq)**2 * S_freq_weights) / np.sum(np.array(S_freq) * S_freq_weights)
                     self.freq_memory[self.hist_idx] = freq_lehmer
 
             # 移动历史指针
             self.hist_idx = (self.hist_idx + 1) % self.H
 
-            print(f"Iteration {gen + 1}, Best: {best_val}, pop_size: {self.N_current}, P_MS: {self.P_MS}")
+            print(f"Iteration {gen + 1}, Best: {best_val}, pop_size: {self.N_current}")
 
         best_idx = np.argmin(self.fitness)
         return self.pop[best_idx], self.fitness[best_idx], self.iteration_log
